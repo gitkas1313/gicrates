@@ -7,12 +7,13 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 
 # --- CONFIGURATION ---
+# Corrected: st.set_page_config instead of st.set_page_data
 st.set_page_config(page_title="Canada GIC Rates", layout="wide")
 
 # --- GLOBAL DATA SIMULATION (Users & Ads) ---
 @st.cache_resource
 def get_global_store():
-    return {"ads": [], "users": {}}
+    return {"ads": [], "users": {}, "ad_index": 0}
 
 global_data = get_global_store()
 
@@ -63,6 +64,14 @@ def fetch_gic_data():
             {"Bank": "TD Bank", "Term": "1 Year", "Rate": 3.45},
         ]
         return fallback_data, f"Offline Mode (Last Attempt: {datetime.now().strftime('%H:%M:%S')})"
+
+# --- SESSION STATE (Per User) ---
+if 'logged_in_user' not in st.session_state:
+    st.session_state.logged_in_user = None
+if 'page' not in st.session_state:
+    st.session_state.page = "Home"
+if 'editing_ad' not in st.session_state:
+    st.session_state.editing_ad = None
 
 # --- STYLING ---
 st.markdown("""
@@ -118,11 +127,11 @@ if st.session_state.page == "Home":
     # Display Active Ad
     active_ads = [ad for ad in global_data['ads'] if ad['status'] == 'Published']
     if active_ads:
-        idx = st.session_state.ad_index % len(active_ads)
+        idx = global_data['ad_index'] % len(active_ads)
         render_ad_ui(active_ads[idx])
-        # Auto-rotate every 20 seconds
+        # Auto-rotate setup
+        global_data['ad_index'] += 1
         time.sleep(20)
-        st.session_state.ad_index += 1
         st.rerun()
     else:
         st.info("Your ad could be here! Click 'Advertise with Us' below.")
@@ -168,7 +177,6 @@ elif st.session_state.page == "Dashboard":
     if st.session_state.get('show_preview', False):
         st.warning("### Preview Your Ad")
         render_ad_ui(st.session_state.editing_ad)
-        
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Edit Again"):
@@ -231,6 +239,6 @@ elif st.session_state.page == "Dashboard":
                             st.session_state.editing_ad = ad
                             st.rerun()
                     with c2:
-                        if st.button("Delete", key=f"de_{ad['id']}"):
+                        if st.button("Delete", key=f"del_{ad['id']}"):
                             global_data['ads'] = [a for a in global_data['ads'] if a['id'] != ad['id']]
                             st.rerun()
