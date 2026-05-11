@@ -1,22 +1,31 @@
 import streamlit as st
 import pandas as pd
 import uuid
+import time
+import base64
 from datetime import datetime
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Canada GIC Rates", layout="wide")
 
-# --- DATA INITIALIZATION (Simulating a Database) ---
-if 'users' not in st.session_state:
-    st.session_state.users = {} 
-if 'ads' not in st.session_state:
-    st.session_state.ads = [] 
+# --- GLOBAL DATA SIMULATION ---
+# In a real app, this would be a database. 
+# We use @st.cache_resource to persist data across all user sessions.
+@st.cache_resource
+def get_global_data():
+    return {"ads": [], "users": {}}
+
+global_data = get_global_data()
+
+# --- SESSION STATE (Per User) ---
 if 'logged_in_user' not in st.session_state:
     st.session_state.logged_in_user = None
 if 'page' not in st.session_state:
     st.session_state.page = "Home"
 if 'editing_ad' not in st.session_state:
-    st.session_state.editing_ad = None 
+    st.session_state.editing_ad = None
+if 'ad_index' not in st.session_state:
+    st.session_state.ad_index = 0
 
 # --- MOCK GIC DATA ---
 GIC_DATA = [
@@ -39,18 +48,22 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- COMPONENTS ---
-def render_ad_ui(caption, email):
-    """Renders the ad as it appears on the homepage"""
-    st.markdown(f"""
-        <div class="promo-box">
-            <small style="color: #666;">SPONSORED ADVERTISEMENT</small>
-            <h3>{caption}</h3>
-            <p>Contact: {email}</p>
-        </div>
-    """, unsafe_allow_html=True)
+# --- HELPERS ---
+def render_ad_ui(ad):
+    """Renders an ad with support for images and videos"""
+    st.markdown('<div class="promo-box">', unsafe_allow_html=True)
+    st.caption("SPONSORED ADVERTISEMENT")
+    
+    if ad.get('file_bytes'):
+        if ad['file_type'].startswith('image'):
+            st.image(ad['file_bytes'], use_column_width=True)
+        elif ad['file_type'].startswith('video'):
+            st.video(ad['file_bytes'])
+            
+    st.subheader(ad['caption'])
+    st.write(f"Contact: {ad['email']}")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-# --- NAVIGATION ---
 def navigate_to(page):
     st.session_state.page = page
     st.rerun()
@@ -76,10 +89,22 @@ if st.sidebar.button("View GIC Rates"): navigate_to("Home")
 if st.session_state.page == "Home":
     st.title("🇨🇦 Canada GIC Rates Tracker")
     
-    active_ads = [ad for ad in st.session_state.ads if ad['status'] == 'Published']
+    active_ads = [ad for ad in global_data['ads'] if ad['status'] == 'Published']
+    
     if active_ads:
-        latest = active_ads[-1]
-        render_ad_ui(latest['caption'], latest['email'])
+        # Get current ad based on index
+        idx = st.session_state.ad_index % len(active_ads)
+        current_ad = active_ads[idx]
+        
+        # Display the ad
+        ad_placeholder = st.empty()
+        with ad_placeholder.container():
+            render_ad_ui(current_ad)
+        
+        # Script to trigger refresh after 20 seconds
+        time.sleep(20)
+        st.session_state.ad_index += 1
+        st.rerun()
     else:
         st.info("Your ad could be here! Click 'Advertise with Us' below.")
 
@@ -100,7 +125,7 @@ elif st.session_state.page == "Login":
         lemail = st.text_input("Email", key="login_email")
         lpw = st.text_input("Password", type="password", key="login_pw")
         if st.button("Login"):
-            if lemail in st.session_state.users and st.session_state.users[lemail]['password'] == lpw:
+            if lemail in global_data['users'] and global_data['users'][lemail]['password'] == lpw:
                 st.session_state.logged_in_user = lemail
                 navigate_to("Dashboard")
             else:
@@ -112,7 +137,7 @@ elif st.session_state.page == "Login":
         rpw = st.text_input("Password", type="password")
         if st.button("Create Account"):
             if remail and rpw:
-                st.session_state.users[remail] = {"password": rpw, "name": rname}
+                global_data['users'][remail] = {"password": rpw, "name": rname}
                 st.success("Account created! Please login.")
             else:
                 st.error("Please fill all fields.")
@@ -120,13 +145,12 @@ elif st.session_state.page == "Login":
 # --- PAGE: DASHBOARD ---
 elif st.session_state.page == "Dashboard":
     user_email = st.session_state.logged_in_user
-    user_name = st.session_state.users[user_email]['name']
+    user_name = global_data['users'][user_email]['name']
     st.title(f"Dashboard: {user_name}")
     
-    # PREVIEW LOGIC
     if st.session_state.get('show_preview', False):
         st.warning("### Preview Your Ad")
-        render_ad_ui(st.session_state.editing_ad['caption'], user_email)
+        render_ad_ui(st.session_state.editing_ad)
         
         col1, col2 = st.columns(2)
         with col1:
@@ -137,53 +161,63 @@ elif st.session_state.page == "Dashboard":
             st.info(f"Price: {st.session_state.editing_ad['plan'].split('(')[1].replace(')', '')}")
             st.link_button("Pay via PayPal", "https://www.paypal.me/kaztrix")
             if st.button("Confirm Payment & Publish"):
-                # If it's an update, remove the old version
-                st.session_state.ads = [a for a in st.session_state.ads if a['id'] != st.session_state.editing_ad['id']]
+                # Remove old version if editing
+                global_data['ads'] = [a for a in global_data['ads'] if a['id'] != st.session_state.editing_ad['id']]
                 
-                # Add the new/updated version
+                # Add new version
                 st.session_state.editing_ad['status'] = "Published"
-                st.session_state.ads.append(st.session_state.editing_ad)
+                global_data['ads'].append(st.session_state.editing_ad)
                 st.session_state.editing_ad = None
                 st.session_state.show_preview = False
                 st.success("Success! Your ad is now live.")
                 st.balloons()
-                st.rerun()
+                time.sleep(2)
+                navigate_to("Home")
     
-    # FORM LOGIC
     else:
         col1, col2 = st.columns([1, 1])
         with col1:
             if st.session_state.editing_ad:
                 st.subheader("Edit Your Ad")
-                current_val = st.session_state.editing_ad['caption']
-                current_plan = st.session_state.editing_ad['plan']
+                curr_cap = st.session_state.editing_ad['caption']
+                curr_plan = st.session_state.editing_ad['plan']
             else:
                 st.subheader("Create New Ad")
-                current_val = ""
-                current_plan = "30 Days ($129.00)"
+                curr_cap = ""
+                curr_plan = "30 Days ($129.00)"
 
-            edit_caption = st.text_input("Ad Headline/Caption", value=current_val)
+            edit_caption = st.text_input("Ad Headline", value=curr_cap)
             edit_plan = st.selectbox("Select Duration", ["30 Days ($129.00)", "60 Days ($249.00)", "12 Months ($1199.00)"], 
-                                     index=["30 Days ($129.00)", "60 Days ($249.00)", "12 Months ($1199.00)"].index(current_plan))
+                                     index=["30 Days ($129.00)", "60 Days ($249.00)", "12 Months ($1199.00)"].index(curr_plan))
+            
+            uploaded_file = st.file_uploader("Upload Image or Video", type=["jpg", "png", "mp4"])
             
             if st.button("Preview & Proceed"):
                 if edit_caption:
+                    file_bytes = None
+                    file_type = None
+                    if uploaded_file:
+                        file_bytes = uploaded_file.getvalue()
+                        file_type = uploaded_file.type
+
                     if not st.session_state.editing_ad:
                         st.session_state.editing_ad = {"id": str(uuid.uuid4())[:8], "email": user_email}
                     
-                    st.session_state.editing_ad.update({"caption": edit_caption, "plan": edit_plan, "status": "Awaiting Payment"})
+                    st.session_state.editing_ad.update({
+                        "caption": edit_caption, 
+                        "plan": edit_plan, 
+                        "status": "Awaiting Payment",
+                        "file_bytes": file_bytes,
+                        "file_type": file_type
+                    })
                     st.session_state.show_preview = True
                     st.rerun()
                 else:
                     st.error("Please enter a caption.")
-            
-            if st.session_state.editing_ad and st.button("Cancel Edit"):
-                st.session_state.editing_ad = None
-                st.rerun()
 
         with col2:
-            st.subheader("Your Existing Ads")
-            user_ads = [ad for ad in st.session_state.ads if ad['email'] == user_email]
+            st.subheader("Your Ads")
+            user_ads = [ad for ad in global_data['ads'] if ad['email'] == user_email]
             if not user_ads:
                 st.write("No ads found.")
             for ad in user_ads:
@@ -201,5 +235,5 @@ elif st.session_state.page == "Dashboard":
                             st.rerun()
                     with c2:
                         if st.button(f"Delete", key=f"del_{ad['id']}"):
-                            st.session_state.ads = [a for a in st.session_state.ads if a['id'] != ad['id']]
+                            global_data['ads'] = [a for a in global_data['ads'] if a['id'] != ad['id']]
                             st.rerun()
