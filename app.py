@@ -3,9 +3,10 @@ import pandas as pd
 from datetime import datetime
 
 # --- CONFIGURATION ---
-st.set_page_data(page_title="Canada GIC Rates", layout="wide")
+# Fixed the function name here:
+st.set_page_config(page_title="Canada GIC Rates", layout="wide")
 
-# --- MOCK DATA (In a real app, this would come from a database or scraper) ---
+# --- MOCK DATA ---
 if 'gic_data' not in st.session_state:
     st.session_state.gic_data = [
         {"Bank": "EQ Bank", "Term": "1 Year", "Rate": 4.50},
@@ -27,7 +28,7 @@ st.markdown("""
     .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #007bff; color: white; }
     .ad-space { border: 2px dashed #ccc; padding: 20px; text-align: center; margin-bottom: 20px; border-radius: 10px; background-color: #ffffff; }
     </style>
-    """, unsafe_allow_type=True)
+    """, unsafe_allow_html=True)
 
 # --- MAIN PAGE ---
 def main_page():
@@ -38,7 +39,8 @@ def main_page():
     st.markdown('<div class="ad-space">', unsafe_allow_html=True)
     if st.session_state.ads:
         latest_ad = st.session_state.ads[-1]
-        st.image("https://via.placeholder.com/728x90.png?text=Your+Ad+Here", use_column_width=True) # Placeholder for actual image
+        # For a real app, you'd display the uploaded image here
+        st.image("https://via.placeholder.com/728x90.png?text=Your+Ad+Here", use_column_width=True) 
         st.subheader(latest_ad['caption'])
     else:
         st.write("### Your Ad Here")
@@ -97,7 +99,6 @@ def advertise_page():
             st.subheader("2. Complete Payment")
             st.write(f"Selected Plan: **{st.session_state.ads[-1]['plan']}**")
             st.write("Please complete your payment via PayPal to finalize your order:")
-            st.video("https://www.youtube.com/watch?v=dQw4w9WgXcQ") # Just a placeholder
             
             paypal_link = "https://www.paypal.me/kaztrix"
             st.markdown(f'''
