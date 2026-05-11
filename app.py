@@ -15,7 +15,7 @@ if 'logged_in_user' not in st.session_state:
     st.session_state.logged_in_user = None
 if 'page' not in st.session_state:
     st.session_state.page = "Home"
-if 'editing_ad' symbol not in st.session_state:
+if 'editing_ad' not in st.session_state:
     st.session_state.editing_ad = None 
 
 # --- MOCK GIC DATA ---
