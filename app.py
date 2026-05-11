@@ -1,4 +1,3 @@
-python
 import streamlit as st
 import pandas as pd
 import uuid
@@ -26,13 +25,14 @@ def fetch_gic_data():
     }
     
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Find the table containing 1-year GIC rates
-        # Note: In a production app, you'd want to make this more robust
+        # Look for the main comparison table
         table = soup.find('table') 
-        
+        if not table:
+            raise Exception("Table not found")
+
         rows = table.find_all('tr')
         data = []
         
@@ -40,7 +40,7 @@ def fetch_gic_data():
             cols = row.find_all('td')
             if len(cols) >= 2:
                 bank_name = cols[0].text.strip()
-                # Clean up the rate string (remove % and whitespace)
+                # Clean up the rate string
                 rate_text = cols[1].text.replace('%', '').strip()
                 try:
                     rate = float(rate_text)
@@ -49,20 +49,20 @@ def fetch_gic_data():
                     continue
         
         if not data:
-            raise Exception("No data found")
+            raise Exception("No data parsed")
             
         return data, datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     except Exception as e:
         # FALLBACK DATA if scraping fails
         fallback_data = [
-            {"Bank": "Oaken Financial (Offline)", "Term": "1 Year", "Rate": 4.60},
-            {"Bank": "EQ Bank (Offline)", "Term": "1 Year", "Rate": 4.50},
-            {"Bank": "Tangerine (Offline)", "Term": "1 Year", "Rate": 4.30},
+            {"Bank": "Oaken Financial", "Term": "1 Year", "Rate": 4.60},
+            {"Bank": "EQ Bank", "Term": "1 Year", "Rate": 4.50},
+            {"Bank": "Tangerine", "Term": "1 Year", "Rate": 4.30},
+            {"Bank": "RBC", "Term": "1 Year", "Rate": 3.50},
+            {"Bank": "TD Bank", "Term": "1 Year", "Rate": 3.45},
         ]
-        return fallback_data, "Error fetching live data (Showing cached)"
-
-# --- REST OF THE APP CODE REMAINS THE SAME ---
+        return fallback_data, f"Offline Mode (Last Attempt: {datetime.now().strftime('%H:%M:%S')})"
 
 # --- STYLING ---
 st.markdown("""
@@ -75,6 +75,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+# --- HELPERS ---
 def render_ad_ui(ad):
     st.markdown('<div class="promo-box">', unsafe_allow_html=True)
     st.caption("SPONSORED ADVERTISEMENT")
@@ -120,7 +121,6 @@ if st.session_state.page == "Home":
         idx = st.session_state.ad_index % len(active_ads)
         render_ad_ui(active_ads[idx])
         # Auto-rotate every 20 seconds
-        st.info(f"Next ad in 20 seconds...")
         time.sleep(20)
         st.session_state.ad_index += 1
         st.rerun()
@@ -133,6 +133,7 @@ if st.session_state.page == "Home":
     st.subheader("Current GIC Rates (1-Year Term)")
     df = pd.DataFrame(gic_list).sort_values(by="Rate", ascending=False)
     st.table(df.style.format({"Rate": "{:.2f}%"}))
+    st.info("Contact or Support: support@kaztrix.com")
 
 # --- PAGE: LOGIN / REGISTER ---
 elif st.session_state.page == "Login":
@@ -167,6 +168,7 @@ elif st.session_state.page == "Dashboard":
     if st.session_state.get('show_preview', False):
         st.warning("### Preview Your Ad")
         render_ad_ui(st.session_state.editing_ad)
+        
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Edit Again"):
